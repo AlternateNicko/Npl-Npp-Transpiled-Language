@@ -179,10 +179,10 @@ class CustomHighlighter:
         self.configure_tags()
 
     def configure_tags(self):
-        self.text.tag_configure("comment", foreground="#7f8c8d", font=("Fire Code 12", 6, "italic"))
+        self.text.tag_configure("comment", foreground="#7f8c8d", font=("Courier", 6, "italic"))
         self.text.tag_configure("string", foreground="#f1c40f")
-        self.text.tag_configure("number", foreground="#9b59b6")
-        self.text.tag_configure("keyword", foreground="#3498db", font=("Fira Code 12", 6, "bold"))
+        self.text.tag_configure("number", foreground="#9b59b6", font=("Courier", 6, "italic"))
+        self.text.tag_configure("keyword", foreground="#3498db", font=("Courier", 6, "bold"))
         self.text.tag_configure("builtin", foreground="#2ecc71")
         self.text.tag_configure("operator", foreground="#e74c3c")
         self.text.tag_configure("brace", foreground="#bdc3c7")
@@ -223,7 +223,7 @@ class EditorTab:
             bg=theme["linen_bg"],
             fg=theme["linen_fg"],
             insertbackground=theme["text_fg"],
-            font=("Sans", 6),
+            font=("Courier", 6),
         )
         self.line_numbers.pack(side="left", fill="y")
 
@@ -238,7 +238,7 @@ class EditorTab:
             selectforeground=theme["selection_fg"],
             relief="flat",
             border=0,
-            font=("Sans", 6),
+            font=("Courier", 6),
             padx=11,
             pady=11,
         )

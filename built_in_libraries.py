@@ -6,11 +6,10 @@ from npp import NPP
 
 t, m, r, sys, json = None, None, None, None, None
 class libraries:
-    def __init__(self, lib, lib_name, var, line, cnt, classes):
+    def __init__(self, library, library_name, variables, cnt, classes, functions, in_class, current_func, Errors, attempt, **kwargs):
         self.libraries = ["math", "files", "random", "sys", "time", "smart", "os"]
         self.library_name = lib_name
-        self.library = lib
-        self.line = line # main line to parse
+        self.library = library
         if isinstance(line, tuple):
             line = line[0] + line[1]
         npp = NPP(line)
@@ -18,22 +17,14 @@ class libraries:
         self.cnt = cnt
         self.eval = npp.eval
         self.special_split = npp.special_split
-        self.variables = var
+        self.variables = variables
         self.classes = classes
-        self.attempt = False
-        self.Errors = { # all of the errors that will show up, if one of this is True, the whole code is stop and prints a trace back where the error originated,
-            'SyntaxError': False,
-            'IndexError': False,
-            'RecursionError': False,
-            'NameError': False,
-            'ZeroDivisionError': False,
-            'TypeError': False,
-            'KeyError': False,
-            'MemoryError': False,
-            'ValueError': False,
-            'ModuleError': False,
-            'QuitError': False
-        }
+        self.attempt = attempt
+        self.functions = functions
+        self.in_class = in_class
+        self.current_functions = current_func
+        self.counter = 0
+        self.Errors = Errors
     
     def process(self, line, ti, ma, ra, jsn, syss, variant="va"):
         global t, m, r, sys, json
@@ -43,15 +34,15 @@ class libraries:
         json = jsn
         sys = syss
         if variant == "va":
-            res = self.assign_variables(variant)
+            res = self.assign_variables(line, variant)
             return tuple([self.variables])
         else:
-            res = self.one_line(variant)
+            res = self.one_line(line, variant)
     
-    def one_line(self, var):
+    def one_line(self, line, var):
         global t, m, json, sys, r
         if var == "ol":
-            instruction = self.line
+            instruction = line
             try:
                 if "time" in self.library and instruction.startswith(self.library_name["time"] + "."):
                     man = self.special_split(instruction, ".", ("'", '"'), ("'", '"'))[1]
@@ -108,10 +99,83 @@ class libraries:
                         sys.exit(args + "\n")
                     elif man.startswith("attempt(") and man.endswith(")"):
                         self.attempt = not self.attempt
+                if "debug" in self.library and instruction.startswith(self.library_name["sys"] + "."):
+                    man = self.special_split(instruction, ".", ("'", '"'), ("'", '"'))[1]
+                    if man.startswith("buzz(") and man.endswith(")"):
+                        print("buzz")
+                    elif man.startswith("fizz(") and man.endswith(")"):
+                        print("fizz")
+                    elif man.startswith("fizzbuzz(") and man.endswith(")"):
+                        print("fizzbuzz")
+                    elif man.startswith("defined(") and man.endswith(")"):
+                        args = man[8:-1].strip()
+                        if args in self.variables.keys():
+                            print(f"<NDB>> VARIABLE <{args}> IS DEFINED")
+                        else:
+                            print(f"<NDB>> VARIABLE <{args}> IS NOT DEFINED")l
+                    elif man.startswith("def_func(") and man.endswith(")"):
+                        args = man[9:-1].strip()
+                        if args in self.functions.keys():
+                            print(f"<NDB>> FUNCTION <{args}> IS DEFINED")
+                        else:
+                            print(f"<NDB>> FUNCTION <{args}> IS NOT DEFINED")l
+                    elif man.startswith("attributes(") and man.endswith(")"):
+                        args = man[10:-1].strip()
+                        if args not in self.classes.keys():
+                            if not self.attempt:
+                                print("\033[31mTraceback(most_recent_call_back):\033[0m")
+                                for i in self.traceback:
+                                    print(f"    TB - [ File `<string>` line: {self.traceback[i]}, in {i} ],")
+                                    print(f"    TB - [ File `<string>` TB found > line: {self.og_c} in {i} ]")
+                                    print(f"\nNameError: given name is not a defined class object")
+                                    self.Errors["NameError"] = True
+                                return None
+                        print(self.classes[args])
+                    elif man.startswith("isattribute(") and man.endswith(")"):
+                        args = man[12:-1].strip().split(",", 1)
+                        if args[0] not in self.classes.keys():
+                            if not self.attempt:
+                                print("\033[31mTraceback(most_recent_call_back):\033[0m")
+                                for i in self.traceback:
+                                    print(f"    TB - [ File `<string>` line: {self.traceback[i]}, in {i} ],")
+                                    print(f"    TB - [ File `<string>` TB found > line: {self.og_c} in {i} ]")
+                                    print(f"\nNameError: given name is not a defined class object")
+                                    self.Errors["NameError"] = True
+                                return None
+                        elif args[1] not in self.classes[args[0]]["variables"].keys():
+                            print(f"<NDB>> ATTRIBUTE {args[1]} IS A DEFINED ATTRIBUTE")
+                        else:
+                            print(f"<NDB>> ATTRIBUTE {args[1]} IS NOT A DEFINED ATTRIBUTE")
+                    elif man.startswith("wait(") and man.endswith(")"):
+                        import time
+                        args = man[6:-1].strip()
+                        v = self.eval(args, {}, self.variables)
+                        time.sleep(v)
+                    elif man.startswith("debug"):
+                        args = self.eval(man[6:-1], {}, self.variables)
+                        return ("$<<DEBUGGED>>")
+                    elif man.startswith("adv_debug"):
+                        args = self.eval(man[10:-1], {}, self.variables)
+                        return ("$<<ADV_DEBUGGED>>", args)
+                    elif man.startswith("self_eval"):
+                        return ("$<<SELF EVAL>>")
+                    elif man.startswith("in_function(") and man.endswith(")"):
+                        print(self.current_func)
+                    elif man.startswith("in_class(") and man.endswith(")"):
+                        print(self.in_class)
+                    elif man.startswith("functions(") and man.endswith(")"):
+                        print(self.functions)
+                    elif man.startswith("errors(") and man.endswith(")"):
+                        args = man[7:-1].strip()
+                        if args == "":
+                            for e in self.Errors.keys():
+                                print(f"{e}: {self.Errors[e]}")
+                        else:
+                            print(self.Errors[args])
                 return (self.variables, self.cnt)
             except Exception as e:
                 print(e)
-    def assign_variables(self, var):
+    def assign_variables(self, line, var):
         global t, m, r, json, sys
         if var == "va":
             inst = self.line

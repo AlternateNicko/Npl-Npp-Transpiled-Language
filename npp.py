@@ -2,6 +2,7 @@ import re # for spliting characters or strings without striping it completly
 import ast
 import operator
 from typing import Any, Dict, Union, List, Tuple, Set
+import os
 import copy
 import sys as system
 
@@ -136,7 +137,7 @@ class NPP:
         self.libraries.extend(list(special_library.keys()))
         self.library = [] # library names will be appended here once they are imported
         self.nplibs_acc = {key: False for key in self.nplibs.keys()}
-        self.path = system.path
+        self.path = os.getcwd() # current directory
         
         # i may aswell explain each variables here
         self.Instructions = instructions.split("\n")# main instruction line gets split line by line
@@ -436,8 +437,12 @@ class NPP:
         for v in self.variables.keys():
             if v.startswith(self.special + ".") and self.in_class[1]:
                 self.classes[self.in_class[0]]["variables"][v] = self.variables[v]
+                if v not in self.classes[self.in_class[0]]["variables"]["<attr>"]:
+                    self.classes[self.in_class[0]]["variables"]["<attr>"].append(v)
             if self.variables[v] != self.constants[v][1]:
                 self.constants[v][0] = False
+        if self.in_class[1]:
+            self.classes[self.in_class[0]]["variables"]["<dict>"].update(self.classes[self.in_class[0]]["variables"])
 
         self.global_var.update(self.variables)
         
@@ -1066,7 +1071,7 @@ class NPP:
             return self.handle_output(instruction) # stdout
             
         elif instruction.startswith('quit()'):
-            self.Error["QuitError"] = True # a hidden error just to stop the program without affecting the main python program
+            self.Errors["QuitError"] = True # a hidden error just to stop the program without affecting the main python program
             return
         
         elif instruction.startswith('inherit ') and self.in_class[1]:
@@ -1425,11 +1430,15 @@ class NPP:
                 block, count = self.get_block()
                 if error_name in self.Errors.keys():
                     if self.Errors[name]:
+                        for i in self.Errors:
+                            self.Errors[i] = False
                         code = self.prep_exec(block)
                         self.exec_block(code, count)
                     self.cnt = count - 1
                 elif error_name in ["any", "Exception"]:
                     if any(i for i in self.Errors.values()):
+                        for i in self.Errors:
+                            self.Errors[i] = False
                         code = self.prep_exec(block)
                         self.exec_block(code, count)
                     self.cnt = count - 1
@@ -1441,12 +1450,7 @@ class NPP:
                     print(f"\nNameError: Invalid Error name {error_name} not found")
                     self.Errors["NameError"] = True
                     return None
-                if error_name not in ["any", "Exception"]:
-                    self.Errors[error_name] = False
-                else:
-                    for v
-                for i in self.Errors:
-                    self.Errors[i] = False
+                self.attempt = False
             else:
                 print("\033[31mTraceback(most_recent_call_back):\033[0m")
                 for i in self.traceback:
@@ -1623,7 +1627,7 @@ class NPP:
                 inherits = True
                 insts = insts[0]
             
-            self.classes[insts] = {"methods": {}, "variables": {}, "inherits": inheritances}
+            self.classes[insts] = {"methods": {}, "variables": {"<dict>": {}, "<attr>": []}, "inherits": inheritances}
             if inherits:
                 for i in inheritances:
                     parent_const = {}
@@ -1636,6 +1640,10 @@ class NPP:
                     if i:
                         self.classes[insts]["methods"].update(parent_const["methods"])
                         self.classes[insts]["variables"].update(parent_const["variables"])
+                        self.classes[insts]["variables"]["<dict>"].update(parent_const["variables"])
+                        self.classes[insts]["variables"]["<attr>"].update(parent_const["methods"])
+                        self.classes[insts]["variables"]["<attr>"].update(parent_const["variables"])
+                        
             # priv checkings example: `priv main(arg1, arg2):`
             block, count = self.get_block()
             og_inst = self.Instructions
@@ -1653,6 +1661,7 @@ class NPP:
                     func_arg = [a.strip() for a in arg[1].split(",")]
                     b, count = self.get_block()
                     self.classes[insts]["methods"][func_name] = {'block': b, 'args': func_arg, 'end': count, 'start': start, "type": "pub" if block[self.cnt].strip().startswith("public") else "priv"}
+                    self.classes[insts]["variables"]["<attr>"].append(func_name)
                     self.cnt = count
                 self.cnt += 1
             self.cnt = og_cnt - 1
@@ -1661,10 +1670,11 @@ class NPP:
         elif instruction.startswith(('{', '}')): pass # because it may be a peice of a code block
         
         elif instruction.startswith("open"):
+            # example: open file.type as read name
             insts = instruction[5:].split(" ", 1)
             file = insts[0].strip()
             args = insts[1].strip().split("as", 1)
-            type = args[0].strip()
+            types = args[0].strip()
             name = args[1].strip()
             modes = ["read", "write", "append", "binary", "create", "text"]
             convert = {
@@ -1675,13 +1685,13 @@ class NPP:
                 "binary": "b",
                 "text": "t"
             }
-            if type not in modes:
+            if types not in modes:
                 if not self.attempt:
                     print("\033[31mTraceback(most_recent_call_back):\033[0m")
                     for i in self.traceback:
                         print(f"    TB - [ File `<string>` line: {self.traceback[i]}, in {i} ],")
                         print(f"    TB - [ File `<string>` TB found > line: {self.og_c} in {i} ]")
-                        print(f"\nTypeError: no such file type named `{type}`")
+                        print(f"\nTypeError: no such file type named `{types}`")
                         self.Errors["TypeError"] = True
                     return None
             if any(ch in name for ch in self.forbiden_chars):
@@ -1693,9 +1703,15 @@ class NPP:
                         print(f"\nValueError: name `{name}` contains a special character the function couldn't support")
                         self.Errors["ValueError"] = True
                     return None
-            type = convert[type]
+            types = convert[types]
+            
             file = self.eval(file, {}, self.variables)
-            self.variables[name] = open(file, type)
+            if not file.startswith("$/"): # starting
+                file = self.path + "/" + file
+            else:
+                file = file[1:].strip()
+            self.variables[name] = open(file, types)
+            self.constants[name] = [True, open(file, types)]
         
         # LAYER 2 OF PARSING
         elif '=' in instruction:
@@ -1781,7 +1797,7 @@ class NPP:
                     if len(result) > 1:
                         self.cnt = result[1]
                     return
-                lib = libraries(self.library, self.library_name, self.variables, instruction, self.cnt)
+                lib = libraries(instruction)
                 result = lib.process(instruction, t, m, r, json, sys, variant="ol")
                 if result == [] or result is None:
                     return
@@ -2239,7 +2255,18 @@ class NPP:
                     return
                 elif self.library:
                     
-                    lib = libraries(self.library, self.library_name, self.variables, (left, right), self.cnt, self.classes.copy())
+                    if any(instruction.strip().startswith(self.library_name[l] + ".") and l in self.library for l in self.nplibs.keys()):
+                        struct = instruction.split(".", 1)
+                        key = self.name_library[struct[0]]
+                        module = self.nplibs[key]
+                        lib = module(**self.__dict__)
+                        result = lib.process(instruction, variant="ol")
+                        if result == [] or result is None:
+                            return
+                        if len(result) >= 1:
+                            self.variables = result[0]
+                            return
+                    lib = libraries(self.library, self.library_name, self.variables, (left, right), self.cnt, self.classes.copy(), self.functions.copy(), self.in_class, self.current_func)
                     result = lib.process((left, right), t, m, r, json, sys, variant="va")
                     if result == [] or result is None:
                         pass

@@ -69,6 +69,7 @@ class debug():
             return
         self.npp = code
         print(f"\n\n—Debug—————————————————————————————————————————————————————————\
+        \n DEB: [ File path: {self.npp.path} ]\
         \nDEB: [ Variables:")
         for i in self.npp.variables:
             print(f"{str(self.types(self.npp.variables[i])):<10} {str(i)+':':<10}{str(self.npp.variables[i])}")
