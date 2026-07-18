@@ -59,6 +59,7 @@ Keywords:
 - in
 - not
 - from
+- as
 
 # special syntaxes
 • Code blocks - These are defined with curly brackets, { as the starting bracket and } as the ending bracket, this is usually defined at the end of an if, else if, else statement, function definition, class instances, while and for loops, and any that involves code blocks.
