@@ -122,9 +122,66 @@ Important notices
 where "library" is the imported library, "method" is the method of that library (or can be anything like variable assignlents)
 and "variable" as the variable name
 
+___
+# Setup
+___
+to setup Npp, you have to first make a .py python program outside of the directory where Npp is stored.
+then write this code
+```python
+from Npp.npp import NPP
 
+instructions = """
+// put your code here
+"""
+module = {}
+npp = NPP(instructions, module)
+results = npp.execute()
+```
+• Key pointers of this code
+  1. from Npp.npp import NPP - if Npp in "from Npp.npp..." is a different name, change it immidietly
+  2. instructions - must be a doc string
+  3. module dictionary - this is where special libraries are stored inside /library directory.
+  4. NPP class - the class always expects 1 or 2 arguments, the most important is the "instructions" argument, module argument is optional if you didn't include any libraries from /library directory
+  5. npp.execute() - doesn't actually need variable assignments.
 
+for simple debugging, write this on top of the code
+```python
+from Npp.npp import ndebug
+```
+then do
+```python
+npp = NPP(instructions) # or where NPP() gets defined, the code in the following must be added after npp
+ndb = ndebug(True) # False for debug mode off
+ndb.print_init(npp) # The first print, this prints the variables and values and information
+ndb.print_functions(npp) # prints out the each functions, what their code block is, arguments, and information
+ndb.print_classes(npp) # prints out the classes and its attributes, methods, and inherited class
+```
 
+• This is usefull for simply debugging after code execution to check informations about the program and any issues that needed to be fixed
 
+And For special modules in /library, do this
+data_lib for example
 
+```python
+from Npp.npp import NPP
+from Npp.library.data_lib import class_module
 
+instructions = """
+// put your code here
+"""
+module = {
+    "datalib": class_module,
+    ...
+}
+npp = NPP(instructions, module)
+results = npp.execute()
+```
+
+• key pointers:
+- module must have a key with a string, and a name that will be used as the name of the library inside Npp libraries
+- "from Npp.library.data_lib" must be imported, and must be the main class
+- the module must have the value as a instance of the class object, and don't run the class initialize method
+
+___
+# Example Npp Codes
+___
