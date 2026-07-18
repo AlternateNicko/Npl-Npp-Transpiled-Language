@@ -58,8 +58,10 @@ Keywords:
 - not
 - from
 - as
-
+  
+___
 # special syntaxes
+___
 • Code blocks - These are defined with curly brackets, { as the starting bracket and } as the ending bracket, this is usually defined at the end of an if, else if, else statement, function definition, class instances, while and for loops, and any that involves code blocks.
 
 • import - libraries are still early stages, but with the "library" folder, you can create your own libraries using python.
