@@ -322,7 +322,7 @@ ___
 ___
 "npp.py" is the main npp code, while libraries in $~versions are older versions of npp.
 Npp gets updates every 1-2 weeks for bug fixes, monthly for features
-Npp is currently at version 1.1.0
+
 • Minor updates - Npp will get small features and bug fixes with this updates, Minor updates also includes updates outside of npp.py, built in libraries, or others will also get updates.
 • Major updates - Npp gets updates that includes huge features, additions, bug fixes, and even reworks. These updates are mostly rare, sometimes just every few months or a year if I have the time. This type of update is important as it could majorly improve speed, optimizations, future development, or syntaxes.
 ___
