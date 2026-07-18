@@ -128,7 +128,7 @@ class NPP:
         # where module_class is the class object of that library
         
         # CONFIGURATIONS
-        self.version = "1.1.0"
+        self.version = "1.0.1"
         
         
         # LIBRARIES
