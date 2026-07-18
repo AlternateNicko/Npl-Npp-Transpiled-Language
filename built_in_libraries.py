@@ -112,7 +112,7 @@ class libraries:
                         if args in self.variables.keys():
                             print(f"<NDB>> VARIABLE <{args}> IS DEFINED")
                         else:
-                            print(f"<NDB>> VARIABLE <{args}> IS NOT DEFINED")l
+                            print(f"<NDB>> VARIABLE <{args}> IS NOT DEFINED")
                     elif man.startswith("def_func(") and man.endswith(")"):
                         args = man[9:-1].strip()
                         if args in self.functions.keys():
