@@ -21,9 +21,9 @@ The followings are:
 Npp source code is written in Python, but future plans are also thinking about
 having backend dependencies of Npp inside C++ for performance utilizations
 
-__________________
+___
 # Syntax
-__________________
+___
 
 Keywords:
 - if
