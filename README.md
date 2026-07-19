@@ -189,6 +189,9 @@ results = npp.execute()
 - "from Npp.library.data_lib" must be imported, and must be the main class
 - the module must have the value as a instance of the class object, and don't run the class initialize method
 
+• Where to find example?
+- Check out `built_in_libraries` for example, it uses the same layout, but mostly coded for multiple libraries parsing
+
 ___
 # Example Npp Codes
 ___
