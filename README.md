@@ -129,7 +129,7 @@ and "variable" as the variable name
 ___
 # Setup
 ___
-The setup is simple, you can open up NppIDE.py, a simple notebook like IDE, then after writing the code, save it as .npp, or .nxx, a file extension for Npp
+The setup is simple, you can open up NppIDE.py for a quicker coding, or NppIDE.html for a detailed IDE, both simple notebook like IDE (doesn't execute), then after writing the code, save it as .npp, or .nxx, a file extension for Npp
 then at npp_interactive_shell, type
 `N++ your_file.npp`
 to setup Npp, you have to first make a .py python program outside of the directory where Npp is stored.
