@@ -5,6 +5,7 @@ from typing import Any, Dict, Union, List, Tuple, Set
 import os
 import copy
 import sys as system
+from pathlib import Path
 
 if "Npp" not in system.path:
     system.path.append("Npp")
@@ -65,7 +66,6 @@ class SafeEval(ast.NodeVisitor):
                 return self.locals[node.id]
             elif node.id in self.globals:
                 return self.globals[node.id]
-            print(node.id, self.globals)
             raise ValueError(f"Name '{node.id}' is not defined in `{line}`")
         elif isinstance(node, ast.BoolOp):
             values = [self.visit(value) for value in node.values]
@@ -111,25 +111,22 @@ class SafeEval(ast.NodeVisitor):
             container = self.visit(node.value)
             index = self.visit(node.slice)
             if isinstance(container, (list, tuple)) and isinstance(index, int) or isinstance(container, (dict)) and isinstance(index, (int, str)):
-                try:
-                    return container[index]
-                except Exception:
-                    print(container, index)
-                    input()
+                return container[index]
             raise ValueError(f"INDEX `{index}` `{container}` Invalid indexing: {ast.dump(node)} line `{line}`")
         elif isinstance(node, ast.Index):  # For subscript index
             return self.visit(node.value)
         else:
             raise ValueError(f"Unsupported operation: {ast.dump(node)} line {line}")
 class NPP:
-    def __init__(self, instructions, special_library={}):
+    def __init__(self, instructions, special_library={}, path=None, file="nxx"):
         # nplibs holds dictionaries like this
         # "lib_name": module_class,
         # where module_class is the class object of that library
         
         # CONFIGURATIONS
-        self.version = "1.0.1"
-        
+        self.version = "1.0.2" # current version
+        self.path = str(Path.cwd()) if path is None else path # current directory
+        self.file_name = file # name of file
         
         # LIBRARIES
         self.nplibs = special_library
@@ -137,7 +134,6 @@ class NPP:
         self.libraries.extend(list(special_library.keys()))
         self.library = [] # library names will be appended here once they are imported
         self.nplibs_acc = {key: False for key in self.nplibs.keys()}
-        self.path = os.getcwd() # current directory
         
         # i may aswell explain each variables here
         self.Instructions = instructions.split("\n")# main instruction line gets split line by line
@@ -146,6 +142,7 @@ class NPP:
         self.bif = ["num", "input", "eval", "exec", "length", "sort", "min", "mean", "max", "median", "mode", "sum", "range", "call", "reverse", "type", "format("
             "zip", "dict", "map"
         ] # for eval to know if the expression they are evaluating has the languages codes
+        self.bim = [] # this one is for methods
         self.cnt = 0 # the main pointer to the line of code
         self.output = [] # return output
         self.traceback = {"<module>": self.cnt} # the traceback, tracing back to where errors originate
@@ -200,9 +197,37 @@ class NPP:
         evaluator = SafeEval(globals, locals)
         self.evals = False
         return evaluator.visit(tree.body)
+                        
     
-    def arbritrary_exp(self, expression, ret_exp=False):
-        if expression:
+    def eval(self, expression, globals=None, locals=None, arb=True, ret_exp=False, from_lib=False):
+        self.evals = True # a flag to tell the parser that is just evaluating
+        # this eval has the ability to not just evaluate 1 expression, but multiple expressions, the language arbitrary codes, and more
+        """Process of how eval handles an expression like
+        variable = sum(var1) / length(var1) + var2 + mean(var3)
+        first -> assign_variable first process the line, splits variable as "left" and the expression as "right"
+        which then gets converted to "main" line after a few process
+        after finding no simple matching expression, it feeds it to self.eval
+        which the expression is now just sum(var1) / length(var1) + var2 + mean(var3)
+        
+        self.eval checks if it is a singular method (a function with a method without being too complex)
+        self.eval splits the expression by "+" "-" "/" and "*", spliting each function as one
+        breaking down the expression to "sum(var1)" "/" "length(var1)" "+" "var2" "+" "mean(var3)"
+        then for the functions, it gets looped back to self.assigned variable, but this time as one function
+        instead of multiple functions
+        """
+        if from_lib:
+            past_vars = copy.deepcopy(self.variables)
+            self.variables = locals
+        # this part processes dictionary key and values for the self.eval item processing (yes, eval uses itself)
+        is_dict = self.special_find(expression, ":", ('"', "'", "(", "[", "{"), ('"', "'", ")", "]", "}"))
+        if len(expression) == 2 and self.expect(expression, (("(", ")"), ("[", "]"), ("{", "}"))):
+            return self.single_eval(expression, globals, locals)
+        if is_dict:
+            exp = self.special_split(expression, ":", ('"', "'", "(", "[", "{"), ('"', "'", ")", "]", "}"), limit=1)
+            key = exp[0].strip()
+            value = str(self.eval(exp[1].strip(), {}, self.variables))
+            return (key, value)
+        if arb:
             execution = False
             methods = False
             if expression.startswith(self.special) and self.in_class[1] and len(expression) > len(self.special + "."):
@@ -304,41 +329,13 @@ class NPP:
                         expression = self.variables["<<temporary_variable>>"]
                         expression = str(expression)
                         del self.variables["<<temporary_variable>>"]
-        return expression
-    
-    def eval(self, expression, globals=None, locals=None, arb=True, ret_exp=False):
-        self.evals = True # a flag to tell the parser that is just evaluating
-        # this eval has the ability to not just evaluate 1 expression, but multiple expressions, the language arbitrary codes, and more
-        """Process of how eval handles an expression like
-        variable = sum(var1) / length(var1) + var2 + mean(var3)
-        first -> assign_variable first process the line, splits variable as "left" and the expression as "right"
-        which then gets converted to "main" line after a few process
-        after finding no simple matching expression, it feeds it to self.eval
-        which the expression is now just sum(var1) / length(var1) + var2 + mean(var3)
-        
-        self.eval checks if it is a singular method (a function with a method without being too complex)
-        self.eval splits the expression by "+" "-" "/" and "*", spliting each function as one
-        breaking down the expression to "sum(var1)" "/" "length(var1)" "+" "var2" "+" "mean(var3)"
-        then for the functions, it gets looped back to self.assigned variable, but this time as one function
-        instead of multiple functions
-        """
-        # this part processes dictionary key and values for the self.eval item processing (yes, eval uses itself)
-        is_dict = self.special_find(expression, ":", ('"', "'", "(", "[", "{"), ('"', "'", ")", "]", "}"))
-        if len(expression) == 2 and self.expect(expression, (("(", ")"), ("[", "]"), ("{", "}"))):
-            return self.single_eval(expression, globals, locals)
-        if is_dict:
-            exp = self.special_split(expression, ":", ('"', "'", "(", "[", "{"), ('"', "'", ")", "]", "}"), limit=1)
-            key = exp[0].strip()
-            value = str(self.eval(exp[1].strip(), {}, self.variables))
-            return (key, value)
-        if arb:
-            expression = self.arbritrary_exp(expression, ret_exp)
         if ret_exp:
             return expression # usefull because it can be use for repeatedly quick evaluation without doing self arbritrary code checks
         expression = str(expression)
         tree = ast.parse(expression.strip(), mode='eval') # parsing time
         evaluator = SafeEval(globals, locals)
         self.evals = False
+        if from_lib: self.variables = past_vars
         return evaluator.visit(tree.body, expression) # final evaluator
         
     def execute(self):
@@ -394,10 +391,14 @@ class NPP:
     # get code block helper function
     # also supports getting nested blocks, and dont need indent because of the braces (and the rest)
     def get_block(self, intent=False):
-        cnt = self.cnt + 1
-        if '{' in self.Instructions[cnt] or "{" in self.Instructions[cnt - 1]:
-            nested = 1 # since starting { is the start of the main code block
-            cnt += 1 if '{' in self.Instructions[cnt] else 0 # for brackets starting at the same line as the function definition
+        cnt = self.cnt
+        if '{' in self.Instructions[cnt].strip() or "{" in self.Instructions[cnt + 1].strip():
+            cnt += 1 if '{' not in self.Instructions[cnt] else 0 # for brackets starting at the same line as the function definition
+            if "{" in self.Instructions[cnt]:
+                nested = 1
+                cnt += 1
+            else:
+                nested = 0
             block = [] # to be returned
             while cnt <= len(self.Instructions):
                 line = self.Instructions[cnt].strip()
@@ -944,7 +945,7 @@ class NPP:
         block = self.classes[name]["methods"][m_name]['block']
         count = self.classes[name]["methods"][m_name]['end']
         argument = provided_args
-        arg = self.classes[name]["methods"][m_name]['args']
+        arg = self.classes[name]["methods"][m_name]['args'].copy()
         self.special = arg[0] if m_name == "<const>" else self.special
         self.arg = arg
         self.cnt = 0
@@ -1061,7 +1062,6 @@ class NPP:
             instruction = instruction[0].strip()
         else:
             instruction = instruction.strip()
-            
         if not instruction:
             pass
             
@@ -1121,9 +1121,6 @@ class NPP:
             
             addr = parts[1].strip().split("]")[0]
             name = parts[0].strip()
-#            parts = part[1].strip(']').split('['); name = parts[0]
-#            addr = parts[1]
-#            value = part[3]
             if name not in self.variables:
                 if not self.attempt:
                     print("\033[31mTraceback(most_recent_call_back):\033[0m")
@@ -1371,7 +1368,6 @@ class NPP:
                 self.run_methods(class_n, m_name, args, False)
                 
             elif name in list(self.functions.keys()):
-                print(arg)
                 a = arg[1].split(',')
                 a = [self.convert_arg(ar.strip()) for ar in a]
                 self.functions[name]['end'] = self.cnt
@@ -1472,6 +1468,12 @@ class NPP:
         elif instruction.startswith("import"):
             args = instruction[6:].strip().split(",")
             for lib in args:
+                has_get = True if " get " in lib else False
+                get_val = None
+                if has_get:
+                    lib = lib.split(" get ")
+                    get_val = lib[1].strip()
+                    lib = lib[0].strip()
                 if lib in self.libraries:
                     self.library.append(lib)
                     self.library_name[lib] = lib
@@ -1496,6 +1498,67 @@ class NPP:
                         self.nplibs_acc[lib] = True # access allowed
                     else:
                         pass # some built in libraries have its own functions and methods
+                    continue
+                if Path(self.path + "/" + lib.replace(".", "/") + ".npp").exists():
+                    # execute .npp and get variables, functions, and methods
+                    # types of imports -
+                    # import file_npp <- imports full code
+                    # import directory.file_npp <- imports code
+                    # import file_npp get func_or_class <- imports a function or class instead of the whole code
+                    types = "dir" if "." in lib else "cwd"
+                    path = self.path
+                    if types == "dir":
+                        # get directory
+                        path += "/" + lib.replace(".", "/") + ".npp"
+                    else:
+                        path += "/" + lib + ".npp"
+                    # get name
+                    if dir:
+                        split_vars = path.rsplit("/", 1)
+                        name = split_vars[1]
+                        absolute_path = split_vars[0]
+                    with open(path, "r") as file:
+                        code = str(file.read())
+                    # execute code
+                    npp = NPP(code, {}, absolute_path, name)
+                    result = npp.execute()
+                    variables = {}
+                    functions = {}
+                    func_scope = {}
+                    classes = {}
+                    name = name.removesuffix(".npp")
+                    # get variables, functions, classes, and libraries
+                    if has_get and get_val is not None:
+                        value = get_val.split(",")
+                        for get_val in value:
+                            get_val = get_val.strip()
+                            if get_val in npp.variables.keys():
+                                variables[get_val] = npp.variables[get_val]
+                            if get_val in npp.functions.keys():
+                                functions[get_val] = npp.functions[get_val]
+                            if get_val in npp.classes.keys():
+                                classes[get_val] = npp.classes[get_val]
+                    else:
+                        for v in npp.variables.keys():
+                            variables[name + "." + v] = npp.variables[v]
+                        for f in npp.functions.keys():
+                            functions[name + "." + f] = npp.functions[f]
+                        for fs in npp.func_scope.keys():
+                            func_scope[name + "." + f] = npp.func_scope[f]
+                        for c in npp.classes.keys():
+                            classes[name + "." + c] = npp.classes[c]
+                    if npp.libraries:
+                        self.library.extend(npp.library)
+                        self.library_name.update(npp.library_name)
+                        self.name_library.update(npp.name_library)
+                    if npp.nplibs != {}:
+                        self.nplibs.update(npp.nplibs)
+                        self.nplibs_acc.update(npp.nplibs_acc)
+                    self.variables.update(variables)
+                    self.functions.update(functions)
+                    self.classes.update(classes)
+                    self.func_scope.update(func_scope)
+                    self.library.append(name)
                 else:
                     print("\033[31mTraceback(most_recent_call_back):\033[0m")
                     for i in self.traceback:
@@ -1825,7 +1888,7 @@ class NPP:
             self.Errors["SyntaxError"] = True
             return None
             
-    def assign_variable(self, instruction, run_meth=False, exec_vars=True):
+    def assign_variable(self, instruction, run_method=False, exec_vars=True):
         """
         Main Level 2 of parsing
         where variable assignments are handled
@@ -1835,13 +1898,13 @@ class NPP:
         libs = False
         left = stuff[0].strip()
         right = stuff[1].strip()
-        meth = False
+        ismethod = False
         # Handle values of string literals, so method doesnt get involved in strings
         ismeth = self.special_find(right, ".", ('"', "'", "(", "[", "{"), ('"', "'", ")", "]", "}"))
         if ismeth and not right.startswith(self.special):
-            meth = False
+            ismethod = False
         else:
-            meth = True
+            ismethod = True
             
         if not right.startswith(self.special):
             if not right.startswith("call"):
@@ -1853,6 +1916,9 @@ class NPP:
             if main.startswith(self.special) or main == self.special:
                 main += "." + self.special
         else: main = main.strip()
+        # for imports
+        if main in self.library:
+            main = right
         # handles multiple variable names (like val1, val2 = stuff)
         l = self.special_split(left, ",", ('"', "'", "(", "[", "{"), ('"', "'", ")", "]", "}"))
         # if single name
@@ -1876,10 +1942,10 @@ class NPP:
         if any(istrue) and not self.evals:
             self.variables[left] = self.eval(main, {}, self.variables)
             pre_run = True
-        def built_in_functions(left, main, right, meth):
+        def built_in_functions(left, main, right, method):
             global m, r, t, json, sys
             libs = False
-            if True:
+            try:
                 if main.startswith('num(') and main.endswith(')'):
                     self.handle_num_function(left, main)
                     return
@@ -1978,14 +2044,15 @@ class NPP:
                     name = arg[0]
                     polymorph = False
                     if any(name.startswith(aa+".") for aa in list(self.variables.keys())):
+                        
                         try:
                             polymorph = True
-                            name = name.split(".")
+                            name = name.rsplit(".")
                             name = self.eval(name[0], {}, self.variables) + "." + name[1]
                         except Exception:
                             name = arg[0]
                     if any(name == a for a in list(self.class_callers.keys())) or name.startswith(self.special) and self.in_class[0] or any(name.startswith(a) for a in list(self.classes.keys())):
-                        name = name.strip().split(".", 1)
+                        name = name.strip().rsplit(".", 1)
                         m_name = name[1]
                         self.traceback[m_name] = self.og_c
                         if any(name[0].startswith(a) for a in list(self.class_callers.values())):
@@ -2234,6 +2301,7 @@ class NPP:
                     if "(" in main and ")" in main and "<const>" in list(self.classes[name]["methods"].keys()):
                         args = main[:-1].split("(", 1)
                         name = args[0]
+                        
                         m_name = "<const>"
                         args = args[1].split(',')
                         args = [self.convert_arg(arg.strip()) for arg in args]
@@ -2288,45 +2356,45 @@ class NPP:
                     """
                     main = main.replace('++', '<<').replace('--', '>>')
                     self.variables[left] = self.eval(main, {}, self.variables, ret_exp=not exec_vars)
-#            except Exception as e:
-#                if isinstance(e, ZeroDivisionError):
-#                    if not self.attempt:
-#                        print("\033[31mTraceback(most_recent_call_back):\033[0m")
-#                        for i in self.traceback:
-#                            print(f"    TB - [ File `<string>` line: {self.traceback[i]}, in {i} ],")
-#                        print(f"    TB - [ File `<string>` TB found > line: {self.og_c} in {i} ]")
-#                        print(f"\nZeroDivisionError: can't divide by 0...")
-#                    self.Errors["ZeroDivisionError"] = True
-#                    return None
-#                if isinstance(e, MemoryError):
-#                    if not self.attempt:
-#                        print("\033[31mTraceback(most_recent_call_back):\033[0m")
-#                        for i in self.traceback:
-#                            print(f"    TB - [ File `<string>` line: {self.traceback[i]}, in {i} ],")
-#                        print(f"    TB - [ File `<string>` TB found > line: {self.og_c} in {i} ]")
-#                        print(f"\nMemoryError: why would you do this")
-#                    self.Errors["MemoryError"] = True
-#                    return
-#                print("\033[31mTraceback(most_recent_call_back):\033[0m")
-#                for i in self.traceback:
-#                    print(f"    TB - [ File `<string>` line: {self.traceback[i]}, in {i} ],")
-#                print(f"    TB - [ File `<string>` TB found > line: {self.og_c} in {i} ]")
-#                print(f"\nSyntaxError: Invalid given syntax {main}, {e}")
-#                self.Errors["SyntaxError"] = True
-#                return None
-        if not run_meth and not pre_run:
-            built_in_functions(left, main, right, meth)
+            except Exception as e:
+                if isinstance(e, ZeroDivisionError):
+                    if not self.attempt:
+                        print("\033[31mTraceback(most_recent_call_back):\033[0m")
+                        for i in self.traceback:
+                            print(f"    TB - [ File `<string>` line: {self.traceback[i]}, in {i} ],")
+                        print(f"    TB - [ File `<string>` TB found > line: {self.og_c} in {i} ]")
+                        print(f"\nZeroDivisionError: can't divide by 0...")
+                    self.Errors["ZeroDivisionError"] = True
+                    return None
+                if isinstance(e, MemoryError):
+                    if not self.attempt:
+                        print("\033[31mTraceback(most_recent_call_back):\033[0m")
+                        for i in self.traceback:
+                            print(f"    TB - [ File `<string>` line: {self.traceback[i]}, in {i} ],")
+                        print(f"    TB - [ File `<string>` TB found > line: {self.og_c} in {i} ]")
+                        print(f"\nMemoryError: why would you do this")
+                    self.Errors["MemoryError"] = True
+                    return
+                print("\033[31mTraceback(most_recent_call_back):\033[0m")
+                for i in self.traceback:
+                    print(f"    TB - [ File `<string>` line: {self.traceback[i]}, in {i} ],")
+                print(f"    TB - [ File `<string>` TB found > line: {self.og_c} in {i} ]")
+                print(f"\nSyntaxError: Invalid given syntax {main}, {e}")
+                self.Errors["SyntaxError"] = True
+                return None
+        if not run_method and not pre_run:
+            built_in_functions(left, main, right, ismethod)
         else:
-            if not meth:
-                
+            if not ismethod:
                 self.methods(left, right)
         # class vars
         if any(left in self.classes[vs]["variables"].keys() for vs in self.classes.keys()) and self.in_class[1]:
             self.classes[self.in_class[0]]["variables"][left] = self.variables[left]
 
-        if self.constants[left][0] and self.constants[left][1] == None:
+        if self.constants[left][0] and self.constants[left][1] == None and left in self.variables.keys():
+            
             self.constants[left][1] = self.variables[left]
-        if not meth: self.methods(left, right) # next is methods
+        if not ismethod: self.methods(left, right) # next is methods
         return
     def methods(self, left, right):
         """
@@ -2457,16 +2525,16 @@ class NPP:
                         return
                         
                     # strwith() method as startswith() and endwith() as endswith()
-                    elif var_func[cnt].startswith('strwith(') and var_func[cnt].endswith(')'):
-                        arg = var_func[cnt][8:-1].strip()
+                    elif var_func[cnt].startswith("hasprefix(") and var_func[cnt].endswith(')'):
+                        arg = var_func[cnt][10:-1].strip()
                         arg = arg[1:-1] if arg.startswith('"') and arg.endswith('"') or arg.startswith("'") and arg.endswith("'") else arg
                         if self.variables[name].startswith(arg):
                             self.variables[left] = True
                         else:
                             self.variables[left] = False
                             
-                    elif var_func[cnt].startswith("endwith(") and var_func[cnt].endswith(")"):
-                        arg = var_func[cnt][8:-1].strip()
+                    elif var_func[cnt].startswith("hassuffix(") and var_func[cnt].endswith(")"):
+                        arg = var_func[cnt][10:-1].strip()
                         arg = arg[1:-1] if arg.startswith('"') and arg.endswith('"') or arg.startswith("'") and arg.endswith("'") else arg
                         if self.variables[name].endswith(arg):
                             self.variables[left] = True
@@ -2490,10 +2558,14 @@ class NPP:
                             arg[i] = self.eval(v, {}, self.variables)
                         if len(arg) < 3:
                             if len(arg) < 2:
-                                
                                 arg.append(len(self.variables[name]))
                             arg.append(1)
-                        value = self.variables[name][int(arg[0]):int(arg[1]):int(arg[2])]
+                        if arg[0] == ":" and arg[1] != ":":
+                            value = self.variables[::int(arg[1])]
+                        elif arg[0] != ":" and arg[1] == ":":
+                            value = self.variables[name][int(arg[0])::int(arg[2])]
+                        else:
+                            value = self.variables[name][int(arg[0]):int(arg[1]):int(arg[2])]
                         self.variables[left] = value
                         
                     elif var_func[cnt].startswith("pop(") and var_func[cnt].endswith(')'):
@@ -2551,8 +2623,12 @@ class NPP:
                     elif var_func[cnt].startswith("keys(") and var_func[cnt].endswith(")"):
                         arg = var_func[cnt][5:-1]
                         self.variables[left] = self.variables[name].keys()
-                    
-                    
+                    elif var_func[cnt].startswith("items(") and var_func[cnt].endswith(")"):
+                        arg = var_func[cnt][6:-1]
+                        self.variables[left] = self.variables[name].items()
+                    elif var_func[cnt].startswith("values(") and var_func[cnt].endswith(")"):
+                        arg = var_func[cnt][7:-1]
+                        self.variables[left] = self.variables[name].values()
                     cnt += 1
                 self.process_vars()
             else:
