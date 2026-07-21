@@ -184,7 +184,7 @@ class NPP:
             "eval": {}, # for evaluation
             "func": {},
             "class": {},
-            "cond": {} # for conditions
+            "cond": {}, # for conditions
         } # the cache
         self.constants = {} # assign variable names if they are constant or not, becomes False if they are assigned
         self.Errors = { # all of the errors that will show up, if one of this is True, the whole code is stop and prints a trace back where the error originated,
@@ -209,7 +209,7 @@ class NPP:
         return evaluator.visit(tree.body)
                         
     
-    def eval(self, expression, globals=None, locals=None, arb=True, ret_exp=False, from_lib=False):
+    def eval(self, expression, globals=None, locals=None, arb=True, from_lib=False, from_exp=False):
         self.evals = True # a flag to tell the parser that is just evaluating
         # this eval has the ability to not just evaluate 1 expression, but multiple expressions, the language arbitrary codes, and more
         """Process of how eval handles an expression like
@@ -227,9 +227,20 @@ class NPP:
         """
         if self.eval_deb:
             print("<NDB> EXPRESSION:", expression)
+        
+        # gets expression form
+        if expression in self.variables.keys():
+            return self.variables[expression]
+        if not from_exp:
+            expr = self.expression(expression)
+            if expr["iseval"]:
+                return eval(str(expr["expr"]), {}, self.variables)
+            else:
+                expression = expr["expr"]
         if from_lib:
             past_vars = copy.deepcopy(self.variables)
             self.variables = locals
+        
         # this part processes dictionary key and values for the self.eval item processing (yes, eval uses itself)
         is_dict = self.special_find(expression, ":", ('"', "'", "(", "[", "{"), ('"', "'", ")", "]", "}"))
         if len(expression) == 2 and self.expect(expression, (("(", ")"), ("[", "]"), ("{", "}"))):
@@ -259,7 +270,7 @@ class NPP:
                     execution = True
             if execution:
                 v = False
-                things = ["+", "-", "**", "*", "/", "<=", ">=", "<", ">", "==", "!="]
+                things = ["+", "-", "**", "*", "%", "/", "<=", ">=", "<", ">", "==", "!="]
                 v = self.special_find(expression, things, ('"', "'", "(", "[", "{"), ('"', "'", ")", "]", "}"))
                 # processes item expressions
                 if expression.strip().startswith(("(", "[", "{")):
@@ -316,7 +327,7 @@ class NPP:
                     vals = []
                     for ex in expression:
                         # please don't tell me why it is like this
-                        self.assign_variable("<<temporary_variable>> = " + ex, methods, exec_vars=not ret_exp) # this class method includes handling variable assignments and the functions for arbitrary
+                        self.assign_variable("<<temporary_variable>> = " + ex, methods) # this class method includes handling variable assignments and the functions for arbitrary
                         expression = self.variables["<<temporary_variable>>"] # the name of the variable is like this because this may delete a existing variable that may have this name
                         vals.append(str(expression))
                     del self.variables["<<temporary_variable>>"] # it deletes it
@@ -340,12 +351,11 @@ class NPP:
                             name_var = expression
                             return self.classes[self.in_class[0]]["variables"][name_var]
                         
-                        self.assign_variable("<<temporary_variable>> = " + expression.strip(), methods, exec_vars=not ret_exp) # if the expression doesn't contain any arithmetic characters (+ * - /), it runs this
+                        self.assign_variable("<<temporary_variable>> = " + expression.strip(), methods) # if the expression doesn't contain any arithmetic characters (+ * - /), it runs this
                         expression = self.variables["<<temporary_variable>>"]
                         expression = str(expression)
                         del self.variables["<<temporary_variable>>"]
-        if ret_exp:
-            return expression # usefull because it can be use for repeatedly quick evaluation without doing self arbritrary code checks
+                        
         expression = str(expression)
         tree = ast.parse(expression.strip(), mode='eval') # parsing time
         evaluator = SafeEval(globals, locals)
@@ -401,7 +411,7 @@ class NPP:
         # example: cnt == length(list), should return cnt == 60 (cnt is non constant, list is)
         if any(v in exp for v in self.variables.keys()): # checks if variables are inside the expression
             # uses the same technique as eval, split the expressions
-            operators = ["+", "-", "**", "*", "/", "<=", ">=", "<", ">", "==", "!="]
+            operators = ["+", "-", "**", "*", "%", "/", "<=", ">=", "<", ">", "==", "!="]
             final_exp = []
             has_built_ins = self.special_find(exp, operators, ("'", '"', "(", "{", "["), ("'", '"', ")", "}", "]"))
             if not has_built_ins:
@@ -426,7 +436,6 @@ class NPP:
                         operator.append(operand)
                         cnt -= 1
                     cnt += 1
-                    
                 for line in lines:
                     if any(i + "(" in line for i in self.bif):
                         # tricky, since it needs to check if variable is actually constant or not while that variable is inside a parenthesis
@@ -461,13 +470,11 @@ class NPP:
                 expression["variables"] = variables
                 
         else: # means it's instantly evaluated
-            iseval = True
             expression["expr"] = self.single_eval(exp, {}, self.variables)
             expression["iseval"] = True
             expression["variables"] = {}
         # save to cache
         self.cache["eval"][exp] = expression
-        
         return expression
         
         
@@ -550,11 +557,10 @@ class NPP:
             c = 0
             # pre process the codes for ending brackets
             line = block[-1]
-            
-            if line.strip() == "}":
-                pass
-            elif line.strip().endswith("}") and not line.strip().startswith("}"):
+            if line.strip().endswith("}") and not line.strip().startswith("}"):
                 block[-1] = line.strip()[:-1].strip()
+            elif line.strip() == "}":
+                del block[-1]
             return block, cnt
         else:    
             
@@ -755,13 +761,6 @@ class NPP:
         converts user defined function and method args
         by their types
         """
-        if args.lower() in ["true", "false"]:
-            return args.lower() == "true"
-        if args.isdigit(): return int(args)
-        try:
-            return float(args)
-        except ValueError:
-            pass
         if args.startswith('"') and args.endswith('"') or args.startswith("'") and args.endswith("'"):
             return args[1:-1]
         try:
@@ -818,7 +817,7 @@ class NPP:
                 if expression["iseval"]: # instant evaluation, use eval() since there is no more arb code
                     boolean = eval(expression["expr"], {}, self.variables)
                 else:
-                    boolean = self.eval(expression["expr"], {}, self.variables)
+                    boolean = self.eval(expression["expr"], {}, self.variables, from_exp=True)
                 if not isinstance(boolean, bool):
                     if not self.attempt:
                         print("\033[31mTraceback(most_recent_call_back):\033[0m")
@@ -837,7 +836,7 @@ class NPP:
             elif args in ["&&", "||", "^^"]:
                 
                 text += args[1:] + " "
-        new_cond = self.eval(text, {}, self.variables, ret_exp=False)
+        new_cond = self.eval(text, {}, self.variables)
         return new_cond
     
     def expect(self, line, parts=[]):
@@ -1068,6 +1067,8 @@ class NPP:
         for value, n in zip(argument, arg):
             self.variables[n.strip()] = value
             self.constants[n.strip()] = [True, value]
+        self.process_vars()
+        
         code = self.prep_exec(block)
         self.exec_block(code, count)
         self.global_vars()
@@ -1140,6 +1141,8 @@ class NPP:
         for k in self.variables.keys():
             if k.startswith(self.special):
                 self.classes[name]["variables"][k] = self.variables[k]
+        self.process_vars()
+        
         
         code = self.prep_exec(block)
         self.exec_block(code, count)
@@ -1215,8 +1218,6 @@ class NPP:
         
         Layer 1 of parsing
         """
-        self.process_vars()
-        
         global m, r, t, json, sys
         
         if isinstance(instruction, list):
@@ -1978,7 +1979,9 @@ class NPP:
         
         # LAYER 2 OF PARSING
         elif '=' in instruction:
-            return self.assign_variable(instruction)
+            self.assign_variable(instruction)
+            self.process_vars()
+        
             
         elif '.' in instruction:
             func = self.special_split(instruction, ".", ('"', "'"), ('"', "'"))
@@ -2094,7 +2097,7 @@ class NPP:
             self.Errors["SyntaxError"] = True
             return None
             
-    def assign_variable(self, instruction, run_method=False, exec_vars=True):
+    def assign_variable(self, instruction, run_method=False):
         """
         Main Level 2 of parsing
         where variable assignments are handled
@@ -2152,7 +2155,7 @@ class NPP:
         def built_in_functions(left, main, right, method):
             global m, r, t, json, sys
             libs = False
-            if True:
+            try:
                 if main.startswith('num(') and main.endswith(')'):
                     self.handle_num_function(left, main)
                     return
@@ -2562,33 +2565,33 @@ class NPP:
                     3rd Layer of parsing
                     """
                     main = main.replace('++', '<<').replace('--', '>>')
-                    self.variables[left] = self.eval(main, {}, self.variables, ret_exp=not exec_vars)
-#            except Exception as e:
-#                if isinstance(e, ZeroDivisionError):
-#                    if not self.attempt:
-#                        print("\033[31mTraceback(most_recent_call_back):\033[0m")
-#                        for i in self.traceback:
-#                            print(f"    TB - [ File `<{self.path / Path(self.file_name).with_suffix(self.file_extension)}>` line: {self.traceback[i]}, in {i} ],")
-#                        print(f"    TB - [ File `<{self.path / Path(self.file_name).with_suffix(self.file_extension)}>` TB found > line: {self.og_c} in {i} ]")
-#                        print(f"\nZeroDivisionError: can't divide by 0...")
-#                    self.Errors["ZeroDivisionError"] = True
-#                    return None
-#                if isinstance(e, MemoryError):
-#                    if not self.attempt:
-#                        print("\033[31mTraceback(most_recent_call_back):\033[0m")
-#                        for i in self.traceback:
-#                            print(f"    TB - [ File `<{self.path / Path(self.file_name).with_suffix(self.file_extension)}>` line: {self.traceback[i]}, in {i} ],")
-#                        print(f"    TB - [ File `<{self.path / Path(self.file_name).with_suffix(self.file_extension)}>` TB found > line: {self.og_c} in {i} ]")
-#                        print(f"\nMemoryError: why would you do this")
-#                    self.Errors["MemoryError"] = True
-#                    return
-#                print("\033[31mTraceback(most_recent_call_back):\033[0m")
-#                for i in self.traceback:
-#                    print(f"    TB - [ File `<{self.path / Path(self.file_name).with_suffix(self.file_extension)}>` line: {self.traceback[i]}, in {i} ],")
-#                print(f"    TB - [ File `<{self.path / Path(self.file_name).with_suffix(self.file_extension)}>` TB found > line: {self.og_c} in {i} ]")
-#                print(f"\nSyntaxError: Invalid given syntax {main}, {e}")
-#                self.Errors["SyntaxError"] = True
-#                return None
+                    self.variables[left] = self.eval(main, {}, self.variables)
+            except Exception as e:
+                if isinstance(e, ZeroDivisionError):
+                    if not self.attempt:
+                        print("\033[31mTraceback(most_recent_call_back):\033[0m")
+                        for i in self.traceback:
+                            print(f"    TB - [ File `<{self.path / Path(self.file_name).with_suffix(self.file_extension)}>` line: {self.traceback[i]}, in {i} ],")
+                        print(f"    TB - [ File `<{self.path / Path(self.file_name).with_suffix(self.file_extension)}>` TB found > line: {self.og_c} in {i} ]")
+                        print(f"\nZeroDivisionError: can't divide by 0...")
+                    self.Errors["ZeroDivisionError"] = True
+                    return None
+                if isinstance(e, MemoryError):
+                    if not self.attempt:
+                        print("\033[31mTraceback(most_recent_call_back):\033[0m")
+                        for i in self.traceback:
+                            print(f"    TB - [ File `<{self.path / Path(self.file_name).with_suffix(self.file_extension)}>` line: {self.traceback[i]}, in {i} ],")
+                        print(f"    TB - [ File `<{self.path / Path(self.file_name).with_suffix(self.file_extension)}>` TB found > line: {self.og_c} in {i} ]")
+                        print(f"\nMemoryError: why would you do this")
+                    self.Errors["MemoryError"] = True
+                    return
+                print("\033[31mTraceback(most_recent_call_back):\033[0m")
+                for i in self.traceback:
+                    print(f"    TB - [ File `<{self.path / Path(self.file_name).with_suffix(self.file_extension)}>` line: {self.traceback[i]}, in {i} ],")
+                print(f"    TB - [ File `<{self.path / Path(self.file_name).with_suffix(self.file_extension)}>` TB found > line: {self.og_c} in {i} ]")
+                print(f"\nSyntaxError: Invalid given syntax {main}, {e}")
+                self.Errors["SyntaxError"] = True
+                return None
         if not run_method and not pre_run:
             built_in_functions(left, main, right, ismethod)
         else:
@@ -3020,7 +3023,7 @@ class NPP:
                     for i in outputs:
                         conts += str(i) + " "
                     return conts
-                v = self.eval(content, {}, self.variables)  # Evaluate expression
+                v = self.eval(content, {}, self.variables)
                 if isinstance(content, str) and isinstance(v, tuple):
                     t = ""
                     for i in v:
