@@ -1,3 +1,4 @@
+from pathlib import Path
 
 class debug():
     def __init__(self, bool_debug):
@@ -29,7 +30,7 @@ class debug():
         print("]")
     
     
-    def types(self, value, mode="p"):
+    def types(self, value, mode="c"):
         if mode == "p":
             return type(value)
         if mode == "c" or mode == "clear" or mode == "clean":
@@ -69,10 +70,10 @@ class debug():
             return
         self.npp = code
         print(f"\n\n—Debug—————————————————————————————————————————————————————————\
-        \n DEB: [ File path: {self.npp.path + '/' + self.npp.file_name} ]\
+        \n DEB: [ File path: {self.npp.path / Path(self.npp.file_name).with_suffix('.npp')} ]\
         \nDEB: [ Variables:")
         for i in self.npp.variables:
-            print(f"{str(self.types(self.npp.variables[i])):<10} {str(i)+':':<10}{str(self.npp.variables[i])}")
+            print(f"{str(self.npp.constants[i][0]):<5} {str(self.types(self.npp.variables[i])):<5} {str(i)+':':<10}{str(self.npp.variables[i])}")
     
     def print_libraries(self, code):
         if not self.debug:
